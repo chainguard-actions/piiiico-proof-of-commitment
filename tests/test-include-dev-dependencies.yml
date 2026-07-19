@@ -1,0 +1,61 @@
+name: Test include-dev-dependencies flag
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create package.json with only devDependencies
+        run: |
+          cat > /tmp/dev-only-package.json << 'EOF'
+          {
+            "name": "dev-only-project",
+            "version": "1.0.0",
+            "dependencies": {},
+            "devDependencies": {
+              "jest": "^29.0.0"
+            }
+          }
+          EOF
+
+      # With include-dev-dependencies=true, devDependencies should be included
+      - id: action
+        uses: .
+        with:
+          packages-file: /tmp/dev-only-package.json
+          include-dev-dependencies: "true"
+          fail-on-critical: "false"
+          comment-on-pr: "false"
+          max-packages: "5"
+
+      - name: Assert audit ran and produced outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "audit-summary length: ${#AUDIT_SUMMARY}"
+
+          if [ -z "$HAS_CRITICAL" ]; then
+            echo "FAIL: has-critical output is empty — dev dependencies may not have been included"
+            exit 1
+          fi
+          if [ -z "$CRITICAL_COUNT" ]; then
+            echo "FAIL: critical-count output is empty"
+            exit 1
+          fi
+          if [ -z "$AUDIT_SUMMARY" ]; then
+            echo "FAIL: audit-summary output is empty"
+            exit 1
+          fi
+          # The summary should mention jest (the dev dependency)
+          if ! echo "$AUDIT_SUMMARY" | grep -qi "jest"; then
+            echo "FAIL: audit-summary does not mention 'jest' (dev dependency not included)"
+            exit 1
+          fi
+          echo "PASS: dev dependencies were included in audit"

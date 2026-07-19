@@ -1,0 +1,32 @@
+{
+  "name": "proof-of-commitment",
+  "version": "0.1.0",
+  "license": "MIT",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build:ext": "bun build src/extension/background.ts --outfile dist/extension/background.js && bun build src/extension/content.ts --outfile dist/extension/content.js && bun build src/extension/popup.ts --outfile dist/extension/popup.js && cp src/extension/manifest.json dist/extension/ && cp src/extension/popup.html dist/extension/ && cp -r src/extension/icons dist/extension/",
+    "dev:ext": "bun run build:ext --watch",
+    "dev:backend": "bun run --hot src/backend/server.ts",
+    "start:backend": "bun run src/backend/server.ts",
+    "start:mcp": "bun run src/mcp/server.ts",
+    "build:worker": "bun build src/backend/worker.ts --target=browser --format=esm --minify --outfile=dist/worker.js",
+    "deploy": "bun deploy.ts",
+    "build:all": "bun run build:ext && bun run build:worker",
+    "test:e2e": "bun run src/test/e2e.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/chrome": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@resvg/resvg-wasm": "^2.6.2",
+    "hono": "^4.12.8",
+    "zod": "^4.3.6"
+  }
+}

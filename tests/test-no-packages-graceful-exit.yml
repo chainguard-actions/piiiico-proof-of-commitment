@@ -1,0 +1,32 @@
+name: Test graceful exit when no packages found
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create empty package.json with no dependencies
+        run: |
+          cat > /tmp/empty-deps.json << 'EOF'
+          {
+            "name": "empty-project",
+            "version": "1.0.0",
+            "dependencies": {}
+          }
+          EOF
+
+      # When the package.json has no dependencies, the action should exit
+      # gracefully (empty package list) without failing.
+      - id: action
+        uses: .
+        with:
+          packages-file: /tmp/empty-deps.json
+          fail-on-critical: "false"
+          comment-on-pr: "false"
+
+      - name: Assert action completed without error
+        run: |
+          echo "PASS: action exited gracefully with empty package list"

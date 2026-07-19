@@ -1,0 +1,62 @@
+name: Test auto-detect from package.json
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create test package.json
+        run: |
+          cat > /tmp/test-package.json << 'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "dependencies": {
+              "axios": "^1.0.0",
+              "lodash": "^4.0.0"
+            }
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          packages-file: /tmp/test-package.json
+          ecosystem: npm
+          fail-on-critical: "false"
+          comment-on-pr: "false"
+          max-packages: "5"
+
+      - name: Assert has-critical output is set
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          if [ -z "$HAS_CRITICAL" ]; then
+            echo "FAIL: has-critical output is empty"
+            exit 1
+          fi
+          if [ "$HAS_CRITICAL" != "true" ] && [ "$HAS_CRITICAL" != "false" ]; then
+            echo "FAIL: has-critical must be 'true' or 'false', got: $HAS_CRITICAL"
+            exit 1
+          fi
+          echo "PASS: has-critical=$HAS_CRITICAL"
+
+      - name: Assert audit-summary contains package table
+        env:
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "audit-summary: $AUDIT_SUMMARY"
+          if [ -z "$AUDIT_SUMMARY" ]; then
+            echo "FAIL: audit-summary output is empty"
+            exit 1
+          fi
+          # The summary should contain a markdown table
+          if ! echo "$AUDIT_SUMMARY" | grep -q "Package"; then
+            echo "FAIL: audit-summary does not contain table header 'Package'"
+            exit 1
+          fi
+          echo "PASS: audit-summary contains expected table"

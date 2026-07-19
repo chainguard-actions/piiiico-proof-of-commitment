@@ -1,0 +1,68 @@
+name: Publish to npm + MCP Registry
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  publish-npm:
+    name: Publish npm package with provenance
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for npm Trusted Publishing (OIDC) and provenance attestation
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Check if version already published
+        working-directory: ./npm-package
+        run: |
+          VERSION=$(node -e "console.log(require('./package.json').version)")
+          if npm view "proof-of-commitment@${VERSION}" version 2>/dev/null | grep -q "${VERSION}"; then
+            echo "Version ${VERSION} already published on npm — skipping publish"
+            echo "SKIP_PUBLISH=true" >> $GITHUB_ENV
+          else
+            echo "Version ${VERSION} not yet published — will publish"
+            echo "SKIP_PUBLISH=false" >> $GITHUB_ENV
+          fi
+
+      - name: Publish with provenance
+        if: env.SKIP_PUBLISH == 'false'
+        working-directory: ./npm-package
+        run: npm publish --provenance --access public
+        # NODE_AUTH_TOKEN not needed — npm Trusted Publishing uses OIDC token directly
+        # Configure at: npmjs.com → proof-of-commitment → Settings → Trusted Publishers
+        # Repo: github.com/piiiico/proof-of-commitment, workflow: publish.yml
+
+  publish-mcp-registry:
+    name: Publish to MCP Registry
+    needs: publish-npm
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for GitHub OIDC auth with MCP Registry
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install mcp-publisher
+        run: |
+          curl -sL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+          sudo mv mcp-publisher /usr/local/bin/
+
+      - name: Authenticate with MCP Registry
+        run: mcp-publisher login github-oidc
+
+      - name: Validate server.json
+        run: mcp-publisher validate
+
+      - name: Publish to MCP Registry
+        run: mcp-publisher publish
