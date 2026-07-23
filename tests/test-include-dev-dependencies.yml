@@ -1,0 +1,65 @@
+name: Test include dev dependencies
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_EVENT_NAME: push
+      GITHUB_REPOSITORY: test-org/test-repo
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create package.json with only devDependencies
+        run: |
+          mkdir -p /tmp/dev-deps-workspace
+          cat > /tmp/dev-deps-workspace/package.json <<'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "dependencies": {},
+            "devDependencies": {
+              "typescript": "^5.0.0"
+            }
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          packages-file: /tmp/dev-deps-workspace/package.json
+          ecosystem: npm
+          fail-on-critical: 'false'
+          comment-on-pr: 'false'
+          include-dev-dependencies: 'true'
+          max-packages: '5'
+
+      - name: Assert audit-summary contains typescript (dev dep)
+        env:
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "audit-summary: $AUDIT_SUMMARY"
+          if [ -z "$AUDIT_SUMMARY" ]; then
+            echo "FAIL: audit-summary output was not set — dev dependencies may not have been included"
+            exit 1
+          fi
+          if ! echo "$AUDIT_SUMMARY" | grep -q "typescript"; then
+            echo "FAIL: audit-summary does not mention 'typescript' — dev dependencies may not have been included"
+            exit 1
+          fi
+          echo "PASS: audit-summary contains 'typescript' (dev dependency was included)"
+
+      - name: Assert critical-count is a number
+        env:
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+        run: |
+          echo "critical-count: '$CRITICAL_COUNT'"
+          if [ -z "$CRITICAL_COUNT" ]; then
+            echo "FAIL: critical-count output was not set"
+            exit 1
+          fi
+          if ! echo "$CRITICAL_COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: critical-count should be a non-negative integer, got '$CRITICAL_COUNT'"
+            exit 1
+          fi
+          echo "PASS: critical-count is '$CRITICAL_COUNT'"

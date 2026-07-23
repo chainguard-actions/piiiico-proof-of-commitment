@@ -1,0 +1,66 @@
+{
+  "name": "proof-of-commitment",
+  "version": "1.31.1",
+  "mcpName": "io.github.piiiico/proof-of-commitment",
+  "description": "Supply chain security risk scorer for npm, PyPI, Cargo, and Go packages — behavioral signals that can't be faked",
+  "type": "module",
+  "bin": {
+    "proof-of-commitment": "./index.js",
+    "poc": "./index.js"
+  },
+  "main": "./index.js",
+  "files": [
+    "index.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "supply-chain",
+    "supply-chain-security",
+    "security",
+    "scanner",
+    "npm",
+    "pypi",
+    "cargo",
+    "rust",
+    "golang",
+    "go",
+    "go-modules",
+    "dependencies",
+    "audit",
+    "risk",
+    "behavioral",
+    "commitment",
+    "maintainer",
+    "publisher",
+    "provenance",
+    "trusted-publishing",
+    "mcp",
+    "mcp-server",
+    "vulnerability",
+    "sca",
+    "dependency-audit",
+    "lockfile",
+    "devsecops",
+    "ci",
+    "sarif",
+    "code-scanning"
+  ],
+  "author": "piiiico",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/piiiico/proof-of-commitment"
+  },
+  "homepage": "https://getcommit.dev/audit",
+  "bugs": {
+    "url": "https://github.com/piiiico/proof-of-commitment/issues"
+  },
+  "funding": {
+    "type": "individual",
+    "url": "https://getcommit.dev/pricing?utm_source=npm-fund&utm_medium=package-meta"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,64 @@
+name: Test explicit packages with fail-on-critical false
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_EVENT_NAME: push
+      GITHUB_REPOSITORY: test-org/test-repo
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          packages: 'lodash'
+          ecosystem: npm
+          fail-on-critical: 'false'
+          comment-on-pr: 'false'
+
+      - name: Assert has-critical output is set
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+        run: |
+          echo "has-critical: '$HAS_CRITICAL'"
+          if [ -z "$HAS_CRITICAL" ]; then
+            echo "FAIL: has-critical output was not set"
+            exit 1
+          fi
+          if [ "$HAS_CRITICAL" != "true" ] && [ "$HAS_CRITICAL" != "false" ]; then
+            echo "FAIL: has-critical should be 'true' or 'false', got '$HAS_CRITICAL'"
+            exit 1
+          fi
+          echo "PASS: has-critical is '$HAS_CRITICAL'"
+
+      - name: Assert critical-count output is a number
+        env:
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+        run: |
+          echo "critical-count: '$CRITICAL_COUNT'"
+          if [ -z "$CRITICAL_COUNT" ]; then
+            echo "FAIL: critical-count output was not set"
+            exit 1
+          fi
+          if ! echo "$CRITICAL_COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: critical-count should be a non-negative integer, got '$CRITICAL_COUNT'"
+            exit 1
+          fi
+          echo "PASS: critical-count is '$CRITICAL_COUNT'"
+
+      - name: Assert audit-summary contains lodash
+        env:
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "audit-summary: $AUDIT_SUMMARY"
+          if [ -z "$AUDIT_SUMMARY" ]; then
+            echo "FAIL: audit-summary output was not set"
+            exit 1
+          fi
+          if ! echo "$AUDIT_SUMMARY" | grep -q "lodash"; then
+            echo "FAIL: audit-summary does not mention 'lodash'"
+            exit 1
+          fi
+          echo "PASS: audit-summary contains 'lodash'"

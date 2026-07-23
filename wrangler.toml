@@ -1,0 +1,28 @@
+name = "poc-backend"
+main = "src/backend/worker.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+ENVIRONMENT = "production"
+# Comma-separated glob patterns (use `*` for wildcard) of email addresses that
+# count as internal test signups, not organic ones. Used by /api/keys/stats to
+# split source=mcp-soft-cta key counts into "organic" vs "internal_test" so we
+# can tell whether v1.14 MCP soft-CTA is actually converting external traffic.
+# ALSO used by /api/keys/create (2026-06-12) to bypass the 3-keys-per-IP-per-day
+# rate limit when the signup email matches one of these patterns — unblocks
+# welcome-email body dogfooding. Domain-anchored (NOT `*@*`) so an attacker
+# can't spoof `pico+x@evil.com` to inflate the dogfood lane.
+# Curatable without code redeploy: edit here, redeploy worker (no code change).
+INTERNAL_TEST_EMAIL_PATTERNS = "pico+*@amdal.dev,hawkaa+*@amdal.dev,test-evaluator-probe@example.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "poc-commits"
+database_id = "6ef7b6a9-1d09-4a0f-9ddd-c869a0582460"
+
+
+[triggers]
+crons = [
+  "0 9 * * 1",  # Monday 09:00 UTC — free-tier watchlist weekly digest (runWeeklyDigest)
+  "0 6 * * *",  # Daily 06:00 UTC — Commit Pro monitoring scan (runProMonitoringScan)
+]

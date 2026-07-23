@@ -1,0 +1,42 @@
+name: Supply Chain Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'bun.lock'
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'bun.lock'
+  workflow_dispatch: {}
+
+jobs:
+  audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Commit Supply Chain Audit
+        uses: piiiico/commit-action@fc890899bde18ae82c77f4ab5cb0a12c1c660a67 # v1
+        with:
+          fail-on-critical: false
+          max-packages: '20'
+          comment-on-pr: true
+          include-dev-dependencies: false
+
+      - name: Generate SARIF report
+        if: always()
+        run: npx -y proof-of-commitment --file package.json --sarif --fail-on=none > commit-results.sarif
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@4187e74d05793876e9989daffde9c3e66b4acd07 # v3
+        with:
+          sarif_file: commit-results.sarif
+          category: commit-supply-chain

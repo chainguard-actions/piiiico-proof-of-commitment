@@ -1,0 +1,58 @@
+name: Test PyPI packages from requirements.txt
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_EVENT_NAME: push
+      GITHUB_REPOSITORY: test-org/test-repo
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create requirements.txt in temp location
+        run: |
+          mkdir -p /tmp/pypi-workspace
+          cat > /tmp/pypi-workspace/requirements.txt <<'EOF'
+          # Test requirements
+          requests>=2.28.0
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          packages-file: /tmp/pypi-workspace/requirements.txt
+          ecosystem: pypi
+          fail-on-critical: 'false'
+          comment-on-pr: 'false'
+          max-packages: '5'
+
+      - name: Assert has-critical output is set
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+        run: |
+          echo "has-critical: '$HAS_CRITICAL'"
+          if [ -z "$HAS_CRITICAL" ]; then
+            echo "FAIL: has-critical output was not set"
+            exit 1
+          fi
+          if [ "$HAS_CRITICAL" != "true" ] && [ "$HAS_CRITICAL" != "false" ]; then
+            echo "FAIL: has-critical should be 'true' or 'false', got '$HAS_CRITICAL'"
+            exit 1
+          fi
+          echo "PASS: has-critical is '$HAS_CRITICAL'"
+
+      - name: Assert audit-summary contains requests
+        env:
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "audit-summary: $AUDIT_SUMMARY"
+          if [ -z "$AUDIT_SUMMARY" ]; then
+            echo "FAIL: audit-summary output was not set"
+            exit 1
+          fi
+          if ! echo "$AUDIT_SUMMARY" | grep -q "requests"; then
+            echo "FAIL: audit-summary does not mention 'requests'"
+            exit 1
+          fi
+          echo "PASS: audit-summary contains 'requests'"

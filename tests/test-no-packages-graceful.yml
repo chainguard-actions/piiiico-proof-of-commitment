@@ -1,0 +1,30 @@
+name: Test graceful exit when package list is empty
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Create a requirements.txt with only comments and blank lines (no valid packages)
+      - name: Create empty requirements.txt
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/test-empty"
+          cat > "$GITHUB_WORKSPACE/test-empty/requirements.txt" <<'EOF'
+          # This file has no packages
+          # Just comments
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          packages-file: "${{ github.workspace }}/test-empty/requirements.txt"
+          ecosystem: "pypi"
+          fail-on-critical: "true"
+          comment-on-pr: "false"
+        # The action exits 0 when the package list is empty, so this step should succeed
+
+      - name: Assert action completed gracefully with empty package list
+        run: |
+          echo "PASS: action completed without error when package list was empty"

@@ -1,0 +1,36 @@
+name: Test no packages graceful exit
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Run from a temp directory with no package files so the action exits gracefully
+      - name: Create empty working directory
+        run: mkdir -p /tmp/empty-workspace
+
+      - id: action
+        uses: .
+        with:
+          packages: ''
+          packages-file: ''
+          ecosystem: auto
+          fail-on-critical: 'true'
+          comment-on-pr: 'false'
+        env:
+          GITHUB_WORKSPACE: /tmp/empty-workspace
+
+      - name: Assert has-critical output is empty or false (graceful exit)
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+        run: |
+          echo "has-critical: '$HAS_CRITICAL'"
+          # When no packages found, action exits 0 without setting outputs
+          # Output should be empty or false
+          if [ "$HAS_CRITICAL" = "true" ]; then
+            echo "FAIL: expected has-critical to be empty or false when no packages found"
+            exit 1
+          fi
+          echo "PASS: graceful exit with no packages"

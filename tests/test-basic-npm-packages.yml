@@ -1,0 +1,57 @@
+name: Test basic npm package audit
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          packages: "lodash,express"
+          ecosystem: "npm"
+          fail-on-critical: "false"
+          comment-on-pr: "false"
+
+      - name: Assert has-critical output is set
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          if [ "$HAS_CRITICAL" != "true" ] && [ "$HAS_CRITICAL" != "false" ]; then
+            echo "FAIL: expected has-critical to be 'true' or 'false', got: '$HAS_CRITICAL'"
+            exit 1
+          fi
+          echo "PASS: has-critical is set to a valid value"
+
+      - name: Assert critical-count output is a number
+        env:
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+        run: |
+          echo "critical-count: $CRITICAL_COUNT"
+          if ! echo "$CRITICAL_COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: expected critical-count to be a non-negative integer, got: '$CRITICAL_COUNT'"
+            exit 1
+          fi
+          echo "PASS: critical-count is a valid number"
+
+      - name: Assert audit-summary output is non-empty and contains table
+        env:
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "audit-summary length: ${#AUDIT_SUMMARY}"
+          if [ -z "$AUDIT_SUMMARY" ]; then
+            echo "FAIL: expected audit-summary to be non-empty"
+            exit 1
+          fi
+          if ! echo "$AUDIT_SUMMARY" | grep -q "Supply Chain Audit"; then
+            echo "FAIL: expected audit-summary to contain 'Supply Chain Audit'"
+            exit 1
+          fi
+          if ! echo "$AUDIT_SUMMARY" | grep -q "Package"; then
+            echo "FAIL: expected audit-summary to contain a table header with 'Package'"
+            exit 1
+          fi
+          echo "PASS: audit-summary is non-empty and contains expected content"

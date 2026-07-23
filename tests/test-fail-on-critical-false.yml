@@ -1,0 +1,59 @@
+name: Test fail-on-critical false does not fail workflow
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Audit a well-known high-download npm package with fail-on-critical: false
+      # Even if it's flagged CRITICAL, the workflow should not fail
+      - id: action
+        uses: .
+        with:
+          packages: "react"
+          ecosystem: "npm"
+          fail-on-critical: "false"
+          comment-on-pr: "false"
+
+      - name: Assert action completed and outputs are set
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "audit-summary length: ${#AUDIT_SUMMARY}"
+
+          # Verify has-critical is a boolean
+          if [ "$HAS_CRITICAL" != "true" ] && [ "$HAS_CRITICAL" != "false" ]; then
+            echo "FAIL: expected has-critical to be 'true' or 'false', got: '$HAS_CRITICAL'"
+            exit 1
+          fi
+
+          # Verify critical-count is a number
+          if ! echo "$CRITICAL_COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: expected critical-count to be a non-negative integer, got: '$CRITICAL_COUNT'"
+            exit 1
+          fi
+
+          # Verify audit-summary is non-empty
+          if [ -z "$AUDIT_SUMMARY" ]; then
+            echo "FAIL: expected audit-summary to be non-empty"
+            exit 1
+          fi
+
+          echo "PASS: action completed successfully with fail-on-critical: false"
+
+      - name: Assert audit-summary contains react package
+        env:
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "audit-summary: $AUDIT_SUMMARY"
+          if ! echo "$AUDIT_SUMMARY" | grep -q "react"; then
+            echo "FAIL: expected audit-summary to mention 'react'"
+            exit 1
+          fi
+          echo "PASS: audit-summary contains 'react'"

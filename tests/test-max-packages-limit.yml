@@ -1,0 +1,56 @@
+name: Test max-packages limit is respected
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a package.json with many dependencies
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/test-maxpkg"
+          cat > "$GITHUB_WORKSPACE/test-maxpkg/package.json" <<'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "dependencies": {
+              "lodash": "^4.0.0",
+              "axios": "^1.0.0",
+              "express": "^4.0.0",
+              "react": "^18.0.0",
+              "vue": "^3.0.0"
+            }
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          packages-file: "${{ github.workspace }}/test-maxpkg/package.json"
+          ecosystem: "npm"
+          fail-on-critical: "false"
+          comment-on-pr: "false"
+          max-packages: "2"
+
+      - name: Assert action completed and audit-summary is non-empty
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "audit-summary: $AUDIT_SUMMARY"
+
+          if [ -z "$AUDIT_SUMMARY" ]; then
+            echo "FAIL: expected audit-summary to be non-empty"
+            exit 1
+          fi
+
+          if ! echo "$AUDIT_SUMMARY" | grep -q "Supply Chain Audit"; then
+            echo "FAIL: expected audit-summary to contain 'Supply Chain Audit'"
+            exit 1
+          fi
+
+          echo "PASS: action completed with max-packages=2 limit"

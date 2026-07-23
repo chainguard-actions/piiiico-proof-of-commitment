@@ -1,0 +1,58 @@
+name: Test auto-detect packages from package.json
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a test package.json with known packages
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/test-pkg"
+          cat > "$GITHUB_WORKSPACE/test-pkg/package.json" <<'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "dependencies": {
+              "axios": "^1.0.0",
+              "chalk": "^5.0.0"
+            }
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          packages-file: "${{ github.workspace }}/test-pkg/package.json"
+          ecosystem: "npm"
+          fail-on-critical: "false"
+          comment-on-pr: "false"
+          max-packages: "5"
+
+      - name: Assert has-critical output is set
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          if [ "$HAS_CRITICAL" != "true" ] && [ "$HAS_CRITICAL" != "false" ]; then
+            echo "FAIL: expected has-critical to be 'true' or 'false', got: '$HAS_CRITICAL'"
+            exit 1
+          fi
+          echo "PASS: has-critical is set to a valid value"
+
+      - name: Assert audit-summary mentions audited packages
+        env:
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "audit-summary: $AUDIT_SUMMARY"
+          if [ -z "$AUDIT_SUMMARY" ]; then
+            echo "FAIL: expected audit-summary to be non-empty"
+            exit 1
+          fi
+          # Should contain at least one of the packages from the package.json
+          if ! echo "$AUDIT_SUMMARY" | grep -qE 'axios|chalk'; then
+            echo "FAIL: expected audit-summary to mention 'axios' or 'chalk'"
+            exit 1
+          fi
+          echo "PASS: audit-summary contains expected package names"

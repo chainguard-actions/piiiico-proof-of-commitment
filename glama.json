@@ -1,0 +1,32 @@
+{
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": [
+    "piiiico"
+  ],
+  "name": "proof-of-commitment",
+  "description": "Supply chain risk scoring for npm, PyPI, Cargo (Rust), Go modules, and GitHub repos. 9 MCP tools score packages on behavioral signals — maintainer depth, download momentum, release consistency, OpenSSF Scorecard — to flag sole-maintainer packages before they become CVEs. CRITICAL = 1 maintainer + >10M weekly downloads. Web demo, GitHub Action for PR comments, REST API, and zero-install MCP server.",
+  "category": "Security",
+  "tags": [
+    "supply-chain",
+    "security",
+    "npm",
+    "pypi",
+    "cargo",
+    "rust",
+    "golang",
+    "github",
+    "behavioral-signals",
+    "risk-scoring",
+    "developer-tools",
+    "ci-cd",
+    "openssf-scorecard"
+  ],
+  "author": "piiiico",
+  "license": "MIT",
+  "repository": "https://github.com/piiiico/proof-of-commitment",
+  "homepage": "https://getcommit.dev",
+  "transport": {
+    "type": "streamable-http",
+    "url": "https://poc-backend.amdal-dev.workers.dev/mcp"
+  }
+}
