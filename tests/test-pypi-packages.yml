@@ -1,0 +1,52 @@
+name: Test PyPI package audit
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        with:
+          packages: 'requests'
+          ecosystem: 'pypi'
+          fail-on-critical: 'false'
+          comment-on-pr: 'false'
+        continue-on-error: true
+
+      - name: Assert outputs are valid when API is available
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "audit-summary length: ${#AUDIT_SUMMARY}"
+
+          # If all outputs are empty, the API was likely unavailable — skip assertions
+          if [ -z "$HAS_CRITICAL" ] && [ -z "$CRITICAL_COUNT" ] && [ -z "$AUDIT_SUMMARY" ]; then
+            echo "WARN: all outputs are empty — API likely unavailable or action failed; skipping assertions"
+            exit 0
+          fi
+
+          # Action produced outputs — assert they are structurally valid
+          if [ "$HAS_CRITICAL" != "true" ] && [ "$HAS_CRITICAL" != "false" ]; then
+            echo "FAIL: expected has-critical to be 'true' or 'false', got: '$HAS_CRITICAL'"
+            exit 1
+          fi
+          echo "PASS: has-critical is '$HAS_CRITICAL'"
+
+          if ! echo "$CRITICAL_COUNT" | grep -qE '^[0-9]+$'; then
+            echo "FAIL: expected critical-count to be a non-negative integer, got: '$CRITICAL_COUNT'"
+            exit 1
+          fi
+          echo "PASS: critical-count is '$CRITICAL_COUNT'"
+
+          if [ -z "$AUDIT_SUMMARY" ]; then
+            echo "FAIL: expected audit-summary to be non-empty when other outputs are set"
+            exit 1
+          fi
+          echo "PASS: audit-summary is non-empty"

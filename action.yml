@@ -1,0 +1,95 @@
+name: 'Commit Supply Chain Audit'
+description: 'Audit npm/PyPI dependencies for behavioral commitment signals — solo maintainer risk, download anomalies, attack history'
+author: 'Pico @ Commit (getcommit.dev)'
+branding:
+  icon: 'shield'
+  color: 'purple'
+inputs:
+  packages:
+    description: 'Comma-separated package names to audit (auto-detected from package.json/requirements.txt if not provided)'
+    required: false
+    default: ''
+  packages-file:
+    description: 'Path to package.json or requirements.txt (default: auto-detect in workspace root)'
+    required: false
+    default: ''
+  ecosystem:
+    description: 'Ecosystem hint: npm, pypi, or auto (default: auto-detected from package file)'
+    required: false
+    default: 'auto'
+  fail-on-critical:
+    description: 'Fail the workflow if CRITICAL packages are found (sole publisher + >10M weekly downloads)'
+    required: false
+    default: 'true'
+  max-packages:
+    description: 'Maximum number of packages to audit when auto-detecting from lock files'
+    required: false
+    default: '20'
+  include-dev-dependencies:
+    description: 'Include devDependencies when auto-detecting from package.json'
+    required: false
+    default: 'false'
+  comment-on-pr:
+    description: 'Post audit results as a PR comment (requires pull_request trigger and github-token)'
+    required: false
+    default: 'true'
+  github-token:
+    description: 'GitHub token for posting PR comments (defaults to github.token)'
+    required: false
+    default: ${{ github.token }}
+  api-url:
+    description: 'Commit API base URL (default: https://poc-backend.amdal-dev.workers.dev)'
+    required: false
+    default: 'https://poc-backend.amdal-dev.workers.dev'
+  api-key:
+    description: 'Commit Pro API key — enables batch requests and higher rate limits (get one at getcommit.dev/pricing)'
+    required: false
+    default: ''
+outputs:
+  has-critical:
+    description: 'true if any CRITICAL packages were found'
+    value: ${{ steps.audit.outputs.has-critical }}
+  critical-count:
+    description: 'Number of CRITICAL packages found'
+    value: ${{ steps.audit.outputs.critical-count }}
+  audit-summary:
+    description: 'Audit results as a markdown table (also written to GitHub Step Summary)'
+    value: ${{ steps.audit.outputs.audit-summary }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Chainguard usage telemetry
+      shell: bash
+      run: |
+        # Best-effort, fails open. Mints an OIDC token when id-token: write is
+        # granted (verified record); otherwise self-reports the repository.
+        tok=""
+        if [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ] && [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ]; then
+          tok=$(curl -sf --max-time 2 \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=actions.chainguard.dev" \
+            | sed -n 's/.*"value":"\([^"]*\)".*/\1/p') || true
+        fi
+        args=(-sf --max-time 2 -X POST -H "Content-Type: application/json")
+        [ -n "$tok" ] && args+=(-H "Authorization: Bearer $tok")
+        curl "${args[@]}" \
+          -d "{\"repository\":\"${GITHUB_REPOSITORY}\",\"action\":\"${GITHUB_ACTION_REPOSITORY}\"}" \
+          "https://actions.enforce.dev/actions/v1/record" >/dev/null 2>&1 || true
+    - name: Audit dependencies
+      id: audit
+      shell: bash
+      run: "$GITHUB_ACTION_PATH/scripts/audit.sh"
+      env:
+        INPUT_PACKAGES: ${{ inputs.packages }}
+        INPUT_PACKAGES_FILE: ${{ inputs.packages-file }}
+        INPUT_ECOSYSTEM: ${{ inputs.ecosystem }}
+        INPUT_FAIL_ON_CRITICAL: ${{ inputs.fail-on-critical }}
+        INPUT_MAX_PACKAGES: ${{ inputs.max-packages }}
+        INPUT_INCLUDE_DEV_DEPENDENCIES: ${{ inputs.include-dev-dependencies }}
+        INPUT_COMMENT_ON_PR: ${{ inputs.comment-on-pr }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_API_URL: ${{ inputs.api-url }}
+        INPUT_API_KEY: ${{ inputs.api-key }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}

@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Commit",
+  "version": "0.3.0",
+  "description": "See real trust signals. Contribute your behavioral data — anonymously, verified by World ID.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs0aGzGKeqcT3t3tJ5kpam2q5k+Cm22Lc6oaiCLntuqUrdqgo8OObYMoCJtEOlB/8Wc8r1CySBXSNErrhhyNNQ+xMNF4OWEIGWl/jLypoOWeLMnbUwaapeL3ZEjloaT4qVLi45D0OniUNWHzerh5Sq8b1x8rN+TDO4h14Oy0yeUOX2x88gWFJH2JkQqjK9j9aSZUpyYVzQHP/Qi8cRBumAMpKyKy8Lz3FtZEJika5D8X2iOn4/yWtwE3SJWxqAPJAUTYl6p1Ee9K2iZgzt/FjjALs6oBg85XRPVEtMBksum/phILBZwPw6NzrYh/cd9hStgYVvksLXIaokiKN0Tr15wIDAQAB",
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "identity",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://poc-backend.amdal-dev.workers.dev/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

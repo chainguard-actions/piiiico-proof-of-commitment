@@ -1,0 +1,60 @@
+name: Test include-dev-dependencies from package.json
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_EVENT_NAME: push
+      GITHUB_REPOSITORY: test-org/test-repo
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a package.json with only devDependencies
+        run: |
+          cat > "$GITHUB_WORKSPACE/package.json" <<'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "dependencies": {},
+            "devDependencies": {
+              "jest": "^29.0.0"
+            }
+          }
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          ecosystem: npm
+          fail-on-critical: "false"
+          comment-on-pr: "false"
+          include-dev-dependencies: "true"
+          max-packages: "5"
+
+      - name: Assert has-critical output is set
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          if [ "$HAS_CRITICAL" != "true" ] && [ "$HAS_CRITICAL" != "false" ]; then
+            echo "FAIL: expected has-critical to be 'true' or 'false', got '$HAS_CRITICAL'"
+            exit 1
+          fi
+          echo "PASS: has-critical is set to '$HAS_CRITICAL'"
+
+      - name: Assert audit-summary mentions jest (dev dependency)
+        env:
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "audit-summary: $AUDIT_SUMMARY"
+          if [ -z "$AUDIT_SUMMARY" ]; then
+            echo "FAIL: expected audit-summary to be non-empty"
+            exit 1
+          fi
+          if ! echo "$AUDIT_SUMMARY" | grep -q "jest"; then
+            echo "FAIL: expected audit-summary to mention 'jest' (dev dependency)"
+            exit 1
+          fi
+          echo "PASS: audit-summary contains 'jest' (dev dependency included)"

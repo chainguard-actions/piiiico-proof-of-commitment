@@ -1,0 +1,11 @@
+{
+  "name": "test-project",
+  "version": "1.0.0",
+  "dependencies": {
+    "express": "^4.18.0",
+    "lodash": "^4.17.21",
+    "axios": "^1.4.0",
+    "react": "^18.0.0",
+    "vue": "^3.0.0"
+  }
+}

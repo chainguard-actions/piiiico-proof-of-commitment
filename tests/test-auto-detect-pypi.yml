@@ -1,0 +1,55 @@
+name: Test auto-detect from requirements.txt (PyPI)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_EVENT_NAME: push
+      GITHUB_REPOSITORY: test-org/test-repo
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create a requirements.txt with known packages
+        run: |
+          cat > "$GITHUB_WORKSPACE/requirements.txt" <<'EOF'
+          requests>=2.28.0
+          # a comment line
+          flask==2.3.0
+          EOF
+
+      - id: action
+        uses: .
+        with:
+          packages-file: requirements.txt
+          ecosystem: pypi
+          fail-on-critical: "false"
+          comment-on-pr: "false"
+          max-packages: "5"
+
+      - name: Assert has-critical output is set
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          if [ "$HAS_CRITICAL" != "true" ] && [ "$HAS_CRITICAL" != "false" ]; then
+            echo "FAIL: expected has-critical to be 'true' or 'false', got '$HAS_CRITICAL'"
+            exit 1
+          fi
+          echo "PASS: has-critical is set to '$HAS_CRITICAL'"
+
+      - name: Assert audit-summary contains package table
+        env:
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "audit-summary: $AUDIT_SUMMARY"
+          if [ -z "$AUDIT_SUMMARY" ]; then
+            echo "FAIL: expected audit-summary to be non-empty"
+            exit 1
+          fi
+          if ! echo "$AUDIT_SUMMARY" | grep -q "requests"; then
+            echo "FAIL: expected audit-summary to mention 'requests'"
+            exit 1
+          fi
+          echo "PASS: audit-summary contains 'requests'"
