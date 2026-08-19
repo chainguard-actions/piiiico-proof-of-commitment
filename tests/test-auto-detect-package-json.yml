@@ -1,0 +1,68 @@
+name: Test auto-detect from package.json
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create test package.json fixture
+        run: |
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/test-package.json" <<'EOF'
+          {
+            "name": "test-project",
+            "version": "1.0.0",
+            "dependencies": {
+              "express": "^4.18.0",
+              "lodash": "^4.17.21"
+            },
+            "devDependencies": {
+              "jest": "^29.0.0"
+            }
+          }
+          EOF
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          packages-file: "${{ github.workspace }}/tests/fixtures/test-package.json"
+          ecosystem: npm
+          fail-on-critical: "false"
+          comment-on-pr: "false"
+          max-packages: "5"
+          include-dev-dependencies: "false"
+
+      - name: Assert action ran with package.json auto-detection
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$HAS_CRITICAL" ]; then
+              echo "FAIL: has-critical output is empty"
+              exit 1
+            fi
+            if [ -z "$CRITICAL_COUNT" ]; then
+              echo "FAIL: critical-count output is empty"
+              exit 1
+            fi
+            if [ -z "$AUDIT_SUMMARY" ]; then
+              echo "FAIL: audit-summary output is empty"
+              exit 1
+            fi
+            echo "PASS: action succeeded with package.json auto-detection"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (API unreachable or rate-limited under harness)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

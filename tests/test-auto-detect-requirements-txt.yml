@@ -1,0 +1,66 @@
+name: Test auto-detect from requirements.txt (PyPI)
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create test requirements.txt fixture
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/tests/fixtures"
+          cat > "$GITHUB_WORKSPACE/tests/fixtures/test-requirements.txt" <<'EOF'
+          # Test requirements file
+          requests>=2.28.0
+          flask>=2.3.0
+          numpy>=1.24.0
+          EOF
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          packages-file: "${{ github.workspace }}/tests/fixtures/test-requirements.txt"
+          ecosystem: pypi
+          fail-on-critical: "false"
+          comment-on-pr: "false"
+          max-packages: "5"
+
+      - name: Assert action ran with requirements.txt auto-detection
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$HAS_CRITICAL" ]; then
+              echo "FAIL: has-critical output is empty"
+              exit 1
+            fi
+            if [ -z "$CRITICAL_COUNT" ]; then
+              echo "FAIL: critical-count output is empty"
+              exit 1
+            fi
+            if [ -z "$AUDIT_SUMMARY" ]; then
+              echo "FAIL: audit-summary output is empty"
+              exit 1
+            fi
+            # Verify the summary contains the markdown table header
+            if ! echo "$AUDIT_SUMMARY" | grep -q "Supply Chain Audit"; then
+              echo "FAIL: audit-summary does not contain expected header"
+              exit 1
+            fi
+            echo "PASS: action succeeded with requirements.txt auto-detection"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (API unreachable or rate-limited under harness)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

@@ -1,0 +1,70 @@
+name = "poc-backend"
+main = "src/backend/worker.ts"
+compatibility_date = "2024-12-01"
+
+[vars]
+ENVIRONMENT = "production"
+# Comma-separated glob patterns (use `*` for wildcard) of email addresses that
+# count as internal test signups, not organic ones. Used by /api/keys/stats to
+# split EVERY headline count (total / today / 24h / 7d) into "organic" vs
+# "internal_test" so dashboards don't read probe traffic as growth. Also used
+# by /api/keys/create (2026-06-12) to bypass the 3-keys-per-IP-per-day rate
+# limit so welcome-email body dogfooding works without burning rate budget.
+#
+# Patterns are anchored to operator-owned or RFC 2606 reserved domains only:
+#   *@amdal.dev          — Pico-owned via Migadu (catch-all forwards to
+#                          pico@amdal.dev). All +alias prefixes (pico+, hawkaa+,
+#                          *dogfood*, *probe*) plus plain pico@/hakon@ land here.
+#   *@pico.amdal.dev     — subdomain of amdal.dev.
+#   *@getcommit.dev      — Håkon-owned via Cloudflare Email Routing (catch-all
+#                          → pico@amdal.dev as of 2026-06-03).
+#   *@example.com        — RFC 2606 reserved.
+#   *@example.invalid    — RFC 2606 reserved.
+#   hawkaamdal@gmail.com — Håkon's personal Gmail (LITERAL — cannot wildcard
+#                          gmail.com; any other Håkon Gmail address needs to be
+#                          added explicitly).
+#   hawkaa+commit-tier-verify@gmail.com,
+#   hawkaa+mcp-test@gmail.com — Pico dogfood tags (LITERAL — addresses
+#                          historically used to verify tier/MCP flows; not
+#                          wildcarded to `hawkaa+*@gmail.com` because we cannot
+#                          prove ownership of hawkaa@gmail.com as a third-party
+#                          domain — bypassing rate limits there could let
+#                          whoever owns it create unlimited keys).
+#   hakon@test.com, test@test.com — Placeholder addresses on Verisign-owned
+#                          test.com (not RFC 2606 but functionally a reserved
+#                          testing domain — no one registers users on
+#                          test.com). LITERAL only; `*@test.com` would open
+#                          rate-limit bypass to anyone delivering there.
+# Do NOT use `*@*` or `*@gmail.com` — an attacker could spoof emails on a
+# third-party domain to bypass the rate limit. Operator-owned-domain anchors
+# close that hole.
+# Curatable without code redeploy: edit here, redeploy worker (no code change).
+# 2026-06-13 widening: 2026-06-13 19:12Z probe (Stripe ledger=$0, /api/keys/stats
+# reported 20 organic out of 111 total). Domain breakdown showed 86 amdal.dev
+# + 17 example.com + 2 getcommit.dev + 1 pico.amdal.dev + 1 example.invalid +
+# 2 gmail.com (Håkon) + 2 test.com. Under old narrower patterns, plain pico@,
+# hakon@, hawkaamdal@gmail.com, every *@getcommit.dev / *@pico.amdal.dev /
+# *@example.invalid were counted as organic. Widening collapses organic to its
+# true value (≤5 — bounded above by test.com + any non-Håkon gmail).
+# 2026-06-20 phantom-organic correction: post-2026-06-13 widening, /api/keys/stats
+# kept reporting "4 organic" — but D1 query showed those 4 ARE
+# {test@test.com, hakon@test.com, hawkaa+commit-tier-verify@gmail.com,
+# hawkaa+mcp-test@gmail.com}, all dogfood, all with requests_this_period=0
+# and last_used_at=NULL. Every session was strategizing acquisition based on
+# the lie of "4 external users". Adding the 4 phantoms as literals collapses
+# organic to TRUE 0. The 4 keys themselves are also retroactively revoked in
+# D1 so the count drops at the WHERE revoked_at IS NULL filter, not just the
+# pattern bucket. See worker.ts DEFAULT_INTERNAL_TEST_EMAIL_PATTERNS.
+INTERNAL_TEST_EMAIL_PATTERNS = "*@amdal.dev,*@pico.amdal.dev,*@getcommit.dev,*@example.com,*@example.invalid,hawkaamdal@gmail.com,hawkaa+commit-tier-verify@gmail.com,hawkaa+mcp-test@gmail.com,hakon@test.com,test@test.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "poc-commits"
+database_id = "6ef7b6a9-1d09-4a0f-9ddd-c869a0582460"
+
+
+[triggers]
+crons = [
+  "0 9 * * 1",  # Monday 09:00 UTC — free-tier watchlist weekly digest (runWeeklyDigest)
+  "0 6 * * *",  # Daily 06:00 UTC — Commit Pro monitoring scan (runProMonitoringScan)
+]

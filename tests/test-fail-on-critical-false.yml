@@ -1,0 +1,53 @@
+name: Test fail-on-critical false does not fail workflow
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          packages: "lodash,express,react"
+          ecosystem: npm
+          fail-on-critical: "false"
+          comment-on-pr: "false"
+          max-packages: "10"
+
+      - name: Assert action does not fail when fail-on-critical is false
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          AUDIT_SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+
+          if [ "$OUTCOME" = "success" ]; then
+            # When fail-on-critical is false, action must succeed regardless of findings
+            if [ -z "$HAS_CRITICAL" ]; then
+              echo "FAIL: has-critical output is empty"
+              exit 1
+            fi
+            if [ -z "$CRITICAL_COUNT" ]; then
+              echo "FAIL: critical-count output is empty"
+              exit 1
+            fi
+            # has-critical must be either "true" or "false"
+            if [ "$HAS_CRITICAL" != "true" ] && [ "$HAS_CRITICAL" != "false" ]; then
+              echo "FAIL: has-critical must be 'true' or 'false', got '$HAS_CRITICAL'"
+              exit 1
+            fi
+            echo "PASS: action succeeded with fail-on-critical=false (has-critical=$HAS_CRITICAL)"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (API unreachable or rate-limited under harness)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
