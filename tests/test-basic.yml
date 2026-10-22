@@ -1,0 +1,39 @@
+name: Test basic usage with manual packages
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          nohup setsid python3 "$GITHUB_WORKSPACE/tests/fixtures/mock_api.py" 18080 > /tmp/mock-api.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:18080/ >/dev/null; then echo "mock up"; exit 0; fi
+            sleep 0.5
+          done
+          cat /tmp/mock-api.log; exit 1
+      - id: action
+        uses: .
+        with:
+          packages: 'ok-lodash, ok-express'
+          api-url: http://127.0.0.1:18080
+      - name: Assert outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "summary: $SUMMARY"
+          [ "$HAS_CRITICAL" = "false" ] || { echo "FAIL: has-critical should be false"; exit 1; }
+          [ "$CRITICAL_COUNT" = "0" ] || { echo "FAIL: critical-count should be 0"; exit 1; }
+          echo "$SUMMARY" | grep -q '`ok-lodash`' || { echo "FAIL: ok-lodash missing"; exit 1; }
+          echo "$SUMMARY" | grep -q '`ok-express`' || { echo "FAIL: ok-express missing"; exit 1; }
+          echo "$SUMMARY" | grep -q 'All packages pass' || { echo "FAIL: missing pass headline"; exit 1; }
+          echo "$SUMMARY" | grep -q '12M' || { echo "FAIL: downloads not formatted"; exit 1; }
+          echo "$SUMMARY" | grep -q '5.5y' || { echo "FAIL: age not formatted"; exit 1; }
+          grep -q '"packages": \["ok-lodash", "ok-express"\]' /tmp/mock-api-requests.log || { echo "FAIL: unexpected request"; cat /tmp/mock-api-requests.log; exit 1; }
+          echo "PASS"

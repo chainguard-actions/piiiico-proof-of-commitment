@@ -1,0 +1,37 @@
+name: Test critical package with fail-on-critical false
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          nohup setsid python3 "$GITHUB_WORKSPACE/tests/fixtures/mock_api.py" 18080 > /tmp/mock-api.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:18080/ >/dev/null; then echo "mock up"; exit 0; fi
+            sleep 0.5
+          done
+          cat /tmp/mock-api.log; exit 1
+      - id: action
+        uses: .
+        with:
+          packages: 'crit-axios,crit-litellm,high-newpkg,ok-other'
+          fail-on-critical: 'false'
+          api-url: http://127.0.0.1:18080
+      - name: Assert outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "summary: $SUMMARY"
+          [ "$HAS_CRITICAL" = "true" ] || { echo "FAIL: has-critical should be true"; exit 1; }
+          [ "$CRITICAL_COUNT" = "2" ] || { echo "FAIL: critical-count should be 2"; exit 1; }
+          echo "$SUMMARY" | grep -q '2 CRITICAL' || { echo "FAIL: missing critical headline"; exit 1; }
+          echo "$SUMMARY" | grep -q 'HIGH' || { echo "FAIL: missing HIGH row"; exit 1; }
+          echo "$SUMMARY" | grep -q '`crit-axios`' || { echo "FAIL: crit-axios missing"; exit 1; }
+          echo "PASS"

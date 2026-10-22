@@ -1,0 +1,37 @@
+name: Test per-package fallback when batch returns 403
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          nohup setsid python3 "$GITHUB_WORKSPACE/tests/fixtures/mock_api.py" 18080 > /tmp/mock-api.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:18080/ >/dev/null; then echo "mock up"; exit 0; fi
+            sleep 0.5
+          done
+          cat /tmp/mock-api.log; exit 1
+      - id: action
+        uses: .
+        with:
+          packages: 'ok-one,stale-two,ok-three'
+          api-url: http://127.0.0.1:18080/batch403
+      - name: Assert outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "summary: $SUMMARY"
+          cat /tmp/mock-api-requests.log
+          [ "$HAS_CRITICAL" = "false" ] || { echo "FAIL: has-critical should be false"; exit 1; }
+          for p in ok-one stale-two ok-three; do
+            echo "$SUMMARY" | grep -q "\`$p\`" || { echo "FAIL: $p missing"; exit 1; }
+          done
+          echo "$SUMMARY" | grep -q '1 warning' || { echo "FAIL: missing warning headline"; exit 1; }
+          N=$(wc -l < /tmp/mock-api-requests.log)
+          [ "$N" -eq 4 ] || { echo "FAIL: expected 4 requests (1 batch + 3 single), got $N"; exit 1; }
+          echo "PASS"

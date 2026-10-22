@@ -1,0 +1,31 @@
+name: Test package.json detection including devDependencies
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          nohup setsid python3 "$GITHUB_WORKSPACE/tests/fixtures/mock_api.py" 18080 > /tmp/mock-api.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:18080/ >/dev/null; then echo "mock up"; exit 0; fi
+            sleep 0.5
+          done
+          cat /tmp/mock-api.log; exit 1
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/package.json
+          include-dev-dependencies: 'true'
+          api-url: http://127.0.0.1:18080
+      - name: Assert outputs
+        env:
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "summary: $SUMMARY"
+          for p in prod-alpha prod-beta dev-gamma; do
+            echo "$SUMMARY" | grep -q "\`$p\`" || { echo "FAIL: $p missing"; exit 1; }
+          done
+          echo "PASS"

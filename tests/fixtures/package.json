@@ -1,0 +1,11 @@
+{
+  "name": "fixture-project",
+  "version": "1.0.0",
+  "dependencies": {
+    "prod-alpha": "^1.0.0",
+    "prod-beta": "^2.0.0"
+  },
+  "devDependencies": {
+    "dev-gamma": "^3.0.0"
+  }
+}

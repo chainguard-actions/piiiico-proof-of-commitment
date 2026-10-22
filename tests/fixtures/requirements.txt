@@ -1,0 +1,6 @@
+# fixture requirements
+-r other.txt
+py-one>=1.0
+py-two==2.3.4
+py-three[extra]~=1.1
+py-four

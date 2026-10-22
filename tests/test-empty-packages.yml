@@ -1,0 +1,25 @@
+name: Test empty package list exits cleanly
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          packages: ' , ,'
+          api-url: http://127.0.0.1:1
+      - name: Assert no outputs set
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: '$HAS_CRITICAL'"
+          echo "summary: '$SUMMARY'"
+          if [ -n "$HAS_CRITICAL" ] || [ -n "$SUMMARY" ]; then
+            echo "FAIL: expected no outputs for empty package list"
+            exit 1
+          fi
+          echo "PASS"
