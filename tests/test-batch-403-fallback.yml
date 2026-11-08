@@ -1,0 +1,41 @@
+name: Test 403 batch fallback to per-package mode
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API (batch403 mode)
+        run: |
+          rm -f /tmp/mock-requests-403.log
+          nohup python3 tests/fixtures/mock_server.py batch403 18088 /tmp/mock-requests-403.log > /tmp/mock-server-403.log 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:18088/ >/dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:18088/ || { cat /tmp/mock-server-403.log; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages: 'express,lodash,chalk'
+          api-url: http://127.0.0.1:18088
+          comment-on-pr: 'false'
+      - name: Assert fallback produced full results
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "summary: $SUMMARY"
+          cat /tmp/mock-requests-403.log
+          [ "$HAS_CRITICAL" = "false" ] || { echo "FAIL: has-critical should be false"; exit 1; }
+          for p in express lodash chalk; do
+            echo "$SUMMARY" | grep -q "\`$p\`" || { echo "FAIL: $p missing"; exit 1; }
+          done
+          python3 - <<'EOF'
+          import json
+          lines = [json.loads(l) for l in open('/tmp/mock-requests-403.log') if l.strip()]
+          bodies = [json.loads(l['body'])['packages'] for l in lines]
+          assert len(bodies) == 4, f"expected 1 batch + 3 single requests, got {bodies}"
+          assert bodies[0] == ['express', 'lodash', 'chalk'], bodies[0]
+          assert bodies[1:] == [['express'], ['lodash'], ['chalk']], bodies[1:]
+          print("PASS")
+          EOF

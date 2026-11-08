@@ -1,0 +1,6 @@
+# Python deps fixture
+requests>=2.31.0
+flask==3.0.0
+-r other.txt
+numpy[extra]~=1.26
+pydantic; python_version >= "3.8"

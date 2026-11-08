@@ -1,0 +1,28 @@
+name: Test empty package list is a no-op
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/empty/package.json
+          # Unreachable API: if the action tried to call it, the step would fail.
+          api-url: http://127.0.0.1:1
+          comment-on-pr: 'false'
+      - name: Assert no outputs set
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "has-critical: '$HAS_CRITICAL'"
+          echo "summary: '$SUMMARY'"
+          [ "$OUTCOME" = "success" ] || { echo "FAIL: expected success"; exit 1; }
+          [ -z "$HAS_CRITICAL" ] || { echo "FAIL: has-critical should be unset"; exit 1; }
+          [ -z "$SUMMARY" ] || { echo "FAIL: summary should be empty"; exit 1; }
+          echo "PASS"

@@ -1,0 +1,51 @@
+name: Test manual packages (all OK)
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          rm -f /tmp/mock-requests-manual.log
+          nohup python3 tests/fixtures/mock_server.py ok 18081 /tmp/mock-requests-manual.log > /tmp/mock-server-manual.log 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:18081/ >/dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:18081/ || { cat /tmp/mock-server-manual.log; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages: 'express, lodash ,chalk'
+          api-url: http://127.0.0.1:18081
+          comment-on-pr: 'false'
+      - name: Assert outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "summary: $SUMMARY"
+          [ "$HAS_CRITICAL" = "false" ] || { echo "FAIL: has-critical should be false"; exit 1; }
+          [ "$CRITICAL_COUNT" = "0" ] || { echo "FAIL: critical-count should be 0"; exit 1; }
+          for p in express lodash chalk; do
+            echo "$SUMMARY" | grep -q "\`$p\`" || { echo "FAIL: $p missing from summary"; exit 1; }
+          done
+          echo "$SUMMARY" | grep -q "All packages pass" || { echo "FAIL: expected all-pass headline"; exit 1; }
+          echo "$SUMMARY" | grep -q "commit-supply-chain-audit" || { echo "FAIL: marker missing"; exit 1; }
+          echo "PASS"
+      - name: Assert request payload (trimmed names, single batch, no auth)
+        run: |
+          cat /tmp/mock-requests-manual.log
+          python3 - <<'EOF'
+          import json
+          lines = [json.loads(l) for l in open('/tmp/mock-requests-manual.log') if l.strip()]
+          assert len(lines) == 1, f"expected 1 request, got {len(lines)}"
+          req = lines[0]
+          assert req['path'] == '/api/audit', req['path']
+          assert req['auth'] == '', f"unexpected auth header {req['auth']!r}"
+          pkgs = json.loads(req['body'])['packages']
+          assert pkgs == ['express', 'lodash', 'chalk'], pkgs
+          print("PASS")
+          EOF

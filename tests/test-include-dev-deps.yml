@@ -1,0 +1,37 @@
+name: Test include-dev-dependencies with package.json
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          rm -f /tmp/mock-requests-dev.log
+          nohup python3 tests/fixtures/mock_server.py ok 18086 /tmp/mock-requests-dev.log > /tmp/mock-server-dev.log 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:18086/ >/dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:18086/ || { cat /tmp/mock-server-dev.log; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/npm/package.json
+          include-dev-dependencies: 'true'
+          api-url: http://127.0.0.1:18086
+          comment-on-pr: 'false'
+      - name: Assert prod + dev deps audited
+        env:
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "summary: $SUMMARY"
+          cat /tmp/mock-requests-dev.log
+          python3 - <<'EOF'
+          import json
+          lines = [json.loads(l) for l in open('/tmp/mock-requests-dev.log') if l.strip()]
+          assert len(lines) == 1, f"expected 1 request, got {len(lines)}"
+          pkgs = json.loads(lines[0]['body'])['packages']
+          assert pkgs == ['express', 'lodash', 'chalk', 'jest', 'typescript'], pkgs
+          print("PASS: payload", pkgs)
+          EOF
+          echo "$SUMMARY" | grep -q '`typescript`' || { echo "FAIL: typescript missing from summary"; exit 1; }
+          echo "PASS"

@@ -1,0 +1,33 @@
+name: Test API HTTP 500 fails the step
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API (error mode)
+        run: |
+          rm -f /tmp/mock-requests-err.log
+          nohup python3 tests/fixtures/mock_server.py error 18087 /tmp/mock-requests-err.log > /tmp/mock-server-err.log 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:18087/ >/dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:18087/ || { cat /tmp/mock-server-err.log; exit 1; }
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          packages: 'express'
+          api-url: http://127.0.0.1:18087
+          comment-on-pr: 'false'
+      - name: Assert failure
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "has-critical: '$HAS_CRITICAL'"
+          cat /tmp/mock-requests-err.log
+          [ "$OUTCOME" = "failure" ] || { echo "FAIL: expected failure on HTTP 500"; exit 1; }
+          [ -z "$HAS_CRITICAL" ] || { echo "FAIL: no outputs expected on API error"; exit 1; }
+          [ -s /tmp/mock-requests-err.log ] || { echo "FAIL: API was not called"; exit 1; }
+          echo "PASS"

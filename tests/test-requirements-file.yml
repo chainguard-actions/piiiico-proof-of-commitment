@@ -1,0 +1,40 @@
+name: Test packages-file requirements.txt parsing
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          rm -f /tmp/mock-requests-req.log
+          nohup python3 tests/fixtures/mock_server.py ok 18084 /tmp/mock-requests-req.log > /tmp/mock-server-req.log 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:18084/ >/dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:18084/ || { cat /tmp/mock-server-req.log; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/requirements/requirements.txt
+          ecosystem: pypi
+          api-url: http://127.0.0.1:18084
+          comment-on-pr: 'false'
+      - name: Assert parsed packages
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "summary: $SUMMARY"
+          cat /tmp/mock-requests-req.log
+          [ "$HAS_CRITICAL" = "false" ] || { echo "FAIL: has-critical should be false"; exit 1; }
+          python3 - <<'EOF'
+          import json
+          lines = [json.loads(l) for l in open('/tmp/mock-requests-req.log') if l.strip()]
+          assert len(lines) == 1, f"expected 1 request, got {len(lines)}"
+          pkgs = json.loads(lines[0]['body'])['packages']
+          assert pkgs == ['requests', 'flask', 'numpy', 'pydantic'], pkgs
+          print("PASS: payload", pkgs)
+          EOF
+          echo "$SUMMARY" | grep -q '`pydantic`' || { echo "FAIL: pydantic missing"; exit 1; }
+          echo "PASS"

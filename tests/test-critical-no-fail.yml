@@ -1,0 +1,36 @@
+name: Test CRITICAL package with fail-on-critical false
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          rm -f /tmp/mock-requests-crit.log
+          nohup python3 tests/fixtures/mock_server.py critical 18082 /tmp/mock-requests-crit.log > /tmp/mock-server-crit.log 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:18082/ >/dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:18082/ || { cat /tmp/mock-server-crit.log; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages: 'axios,express'
+          api-url: http://127.0.0.1:18082
+          fail-on-critical: 'false'
+          comment-on-pr: 'false'
+      - name: Assert outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "summary: $SUMMARY"
+          [ "$HAS_CRITICAL" = "true" ] || { echo "FAIL: has-critical should be true"; exit 1; }
+          [ "$CRITICAL_COUNT" = "1" ] || { echo "FAIL: critical-count should be 1"; exit 1; }
+          echo "$SUMMARY" | grep -q "CRITICAL" || { echo "FAIL: CRITICAL missing from summary"; exit 1; }
+          echo "$SUMMARY" | grep -q "Critical: \`axios\`" || { echo "FAIL: axios not listed as critical"; exit 1; }
+          echo "$SUMMARY" | grep -q "50M" || { echo "FAIL: downloads not formatted"; exit 1; }
+          echo "PASS"
