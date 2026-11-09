@@ -1,0 +1,5 @@
+# test requirements
+requests>=2.0
+flask==2.3.0
+-r other.txt
+numpy[extra]~=1.26

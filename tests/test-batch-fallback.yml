@@ -1,0 +1,37 @@
+name: Test per-package fallback on 403 batch limit
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install fake curl for the audit API
+        run: |
+          mkdir -p "$RUNNER_TEMP/fakebin" /tmp/fake-curl
+          rm -f /tmp/fake-curl/payloads.log
+          echo batch403 > /tmp/fake-curl/mode
+          cp tests/fixtures/fake-curl.py "$RUNNER_TEMP/fakebin/curl"
+          chmod +x "$RUNNER_TEMP/fakebin/curl"
+          echo "$RUNNER_TEMP/fakebin" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          packages: 'lodash,high-newpkg,express'
+          api-url: http://audit.invalid
+          comment-on-pr: 'false'
+      - name: Assert fallback results
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "payloads:"; cat /tmp/fake-curl/payloads.log
+          echo "summary: $SUMMARY"
+          LINES=$(grep -c . /tmp/fake-curl/payloads.log)
+          if [ "$LINES" != "4" ]; then echo "FAIL: expected 1 batch + 3 single requests, got $LINES"; exit 1; fi
+          if [ "$HAS_CRITICAL" != "false" ]; then echo "FAIL: has-critical should be false"; exit 1; fi
+          for p in lodash high-newpkg express; do
+            echo "$SUMMARY" | grep -q "\`$p\`" || { echo "FAIL: $p missing"; exit 1; }
+          done
+          echo "$SUMMARY" | grep -q 'HIGH risk' || { echo "FAIL: HIGH headline missing"; exit 1; }
+          echo "PASS"

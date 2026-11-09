@@ -1,0 +1,31 @@
+name: Test empty package list exits cleanly
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install fake curl for the audit API
+        run: |
+          mkdir -p "$RUNNER_TEMP/fakebin" /tmp/fake-curl
+          rm -f /tmp/fake-curl/payloads.log
+          echo ok > /tmp/fake-curl/mode
+          cp tests/fixtures/fake-curl.py "$RUNNER_TEMP/fakebin/curl"
+          chmod +x "$RUNNER_TEMP/fakebin/curl"
+          echo "$RUNNER_TEMP/fakebin" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/empty-package.json
+          api-url: http://audit.invalid
+          comment-on-pr: 'false'
+      - name: Assert no API call and no outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: '$HAS_CRITICAL'"
+          if [ -s /tmp/fake-curl/payloads.log ]; then echo "FAIL: API should not be called"; cat /tmp/fake-curl/payloads.log; exit 1; fi
+          if [ -n "$HAS_CRITICAL" ] || [ -n "$SUMMARY" ]; then echo "FAIL: outputs should be empty"; exit 1; fi
+          echo "PASS"

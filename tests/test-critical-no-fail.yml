@@ -1,0 +1,38 @@
+name: Test critical package with fail-on-critical false
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install fake curl for the audit API
+        run: |
+          mkdir -p "$RUNNER_TEMP/fakebin" /tmp/fake-curl
+          rm -f /tmp/fake-curl/payloads.log
+          echo ok > /tmp/fake-curl/mode
+          cp tests/fixtures/fake-curl.py "$RUNNER_TEMP/fakebin/curl"
+          chmod +x "$RUNNER_TEMP/fakebin/curl"
+          echo "$RUNNER_TEMP/fakebin" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          packages: 'critical-axios,lodash,critical-chalk'
+          fail-on-critical: 'false'
+          api-url: http://audit.invalid
+          comment-on-pr: 'false'
+      - name: Assert outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $COUNT"
+          echo "summary: $SUMMARY"
+          if [ "$HAS_CRITICAL" != "true" ]; then echo "FAIL: has-critical should be true"; exit 1; fi
+          if [ "$COUNT" != "2" ]; then echo "FAIL: critical-count should be 2"; exit 1; fi
+          echo "$SUMMARY" | grep -q 'CRITICAL' || { echo "FAIL: CRITICAL missing"; exit 1; }
+          echo "$SUMMARY" | grep -q '`critical-axios`' || { echo "FAIL: critical-axios missing"; exit 1; }
+          echo "$SUMMARY" | grep -q '20M' || { echo "FAIL: downloads formatting missing"; exit 1; }
+          echo "PASS"

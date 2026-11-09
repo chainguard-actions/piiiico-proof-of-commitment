@@ -1,0 +1,35 @@
+name: Test package.json parsing with dev deps and max-packages
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install fake curl for the audit API
+        run: |
+          mkdir -p "$RUNNER_TEMP/fakebin" /tmp/fake-curl
+          rm -f /tmp/fake-curl/payloads.log
+          echo ok > /tmp/fake-curl/mode
+          cp tests/fixtures/fake-curl.py "$RUNNER_TEMP/fakebin/curl"
+          chmod +x "$RUNNER_TEMP/fakebin/curl"
+          echo "$RUNNER_TEMP/fakebin" >> "$GITHUB_PATH"
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/package.json
+          include-dev-dependencies: 'true'
+          max-packages: '4'
+          api-url: http://audit.invalid
+          comment-on-pr: 'false'
+      - name: Assert parsed packages
+        env:
+          COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "payloads:"; cat /tmp/fake-curl/payloads.log
+          echo "summary: $SUMMARY"
+          grep -q '"packages": \["express", "lodash", "react", "jest"\]' /tmp/fake-curl/payloads.log || { echo "FAIL: expected express, lodash, react, jest"; exit 1; }
+          if [ "$COUNT" != "0" ]; then echo "FAIL: critical-count should be 0"; exit 1; fi
+          echo "$SUMMARY" | grep -q '`jest`' || { echo "FAIL: jest missing from summary"; exit 1; }
+          echo "PASS"
