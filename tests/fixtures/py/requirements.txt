@@ -1,0 +1,6 @@
+# comment line
+requests>=2.31.0
+-r other.txt
+flask==3.0.0
+pydantic[email]~=2.0
+high-newpkg

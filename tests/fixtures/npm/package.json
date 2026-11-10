@@ -1,0 +1,12 @@
+{
+  "name": "fixture-npm",
+  "version": "1.0.0",
+  "dependencies": {
+    "dep-alpha": "^1.0.0",
+    "dep-beta": "^2.0.0",
+    "dep-gamma": "^3.0.0"
+  },
+  "devDependencies": {
+    "devdep-one": "^1.0.0"
+  }
+}

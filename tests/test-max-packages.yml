@@ -1,0 +1,37 @@
+name: Test max-packages limit on package.json
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start local audit API stub
+        run: |
+          rm -f /tmp/mock-requests.jsonl
+          nohup python3 "$GITHUB_WORKSPACE/tests/fixtures/mock_api.py" 8765 ok > /tmp/mock.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -s http://127.0.0.1:8765/ >/dev/null; then echo "stub up"; exit 0; fi
+            sleep 0.5
+          done
+          cat /tmp/mock.log
+          exit 1
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/npm/package.json
+          max-packages: '2'
+          api-url: http://127.0.0.1:8765
+          comment-on-pr: 'false'
+      - name: Assert only first two prod deps audited
+        env:
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          cat /tmp/mock-requests.jsonl
+          grep -q '"packages": \["dep-alpha", "dep-beta"\]' /tmp/mock-requests.jsonl \
+            || { echo "FAIL: expected exactly dep-alpha, dep-beta"; exit 1; }
+          if echo "$SUMMARY" | grep -q 'dep-gamma\|devdep-one'; then
+            echo "FAIL: truncated/dev packages should not appear"
+            exit 1
+          fi
+          echo "PASS"

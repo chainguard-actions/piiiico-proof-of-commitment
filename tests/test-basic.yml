@@ -1,0 +1,42 @@
+name: Test basic manual packages
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start local audit API stub
+        run: |
+          rm -f /tmp/mock-requests.jsonl
+          nohup python3 "$GITHUB_WORKSPACE/tests/fixtures/mock_api.py" 8765 ok > /tmp/mock.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -s http://127.0.0.1:8765/ >/dev/null; then echo "stub up"; exit 0; fi
+            sleep 0.5
+          done
+          cat /tmp/mock.log
+          exit 1
+      - id: action
+        uses: .
+        with:
+          packages: 'pkg-one, pkg-two'
+          api-url: http://127.0.0.1:8765
+          comment-on-pr: 'false'
+      - name: Assert outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "summary: $SUMMARY"
+          cat /tmp/mock-requests.jsonl
+          [ "$HAS_CRITICAL" = "false" ] || { echo "FAIL: has-critical"; exit 1; }
+          [ "$CRITICAL_COUNT" = "0" ] || { echo "FAIL: critical-count"; exit 1; }
+          echo "$SUMMARY" | grep -q '`pkg-one`' || { echo "FAIL: pkg-one missing"; exit 1; }
+          echo "$SUMMARY" | grep -q '`pkg-two`' || { echo "FAIL: pkg-two missing"; exit 1; }
+          echo "$SUMMARY" | grep -q 'All packages pass' || { echo "FAIL: headline"; exit 1; }
+          echo "$SUMMARY" | grep -q '12M' || { echo "FAIL: downloads formatting"; exit 1; }
+          grep -q '"packages": \["pkg-one", "pkg-two"\]' /tmp/mock-requests.jsonl || { echo "FAIL: request payload"; exit 1; }
+          echo "PASS"

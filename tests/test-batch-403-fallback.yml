@@ -1,0 +1,42 @@
+name: Test per-package fallback on batch 403
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start local audit API stub (batch403 mode)
+        run: |
+          rm -f /tmp/mock-requests.jsonl
+          nohup python3 "$GITHUB_WORKSPACE/tests/fixtures/mock_api.py" 8765 batch403 > /tmp/mock.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -s http://127.0.0.1:8765/ >/dev/null; then echo "stub up"; exit 0; fi
+            sleep 0.5
+          done
+          cat /tmp/mock.log
+          exit 1
+      - id: action
+        uses: .
+        with:
+          packages: 'alpha-pkg,crit-beta,gamma-pkg'
+          fail-on-critical: 'false'
+          api-url: http://127.0.0.1:8765
+          comment-on-pr: 'false'
+      - name: Assert fallback requests and merged results
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          cat /tmp/mock-requests.jsonl
+          echo "summary: $SUMMARY"
+          LINES=$(wc -l < /tmp/mock-requests.jsonl)
+          [ "$LINES" -eq 4 ] || { echo "FAIL: expected 1 batch + 3 single requests, got $LINES"; exit 1; }
+          for p in alpha-pkg crit-beta gamma-pkg; do
+            grep -q "\"packages\": \[\"$p\"\]" /tmp/mock-requests.jsonl || { echo "FAIL: no single request for $p"; exit 1; }
+            echo "$SUMMARY" | grep -q "\`$p\`" || { echo "FAIL: $p missing from summary"; exit 1; }
+          done
+          [ "$HAS_CRITICAL" = "true" ] || { echo "FAIL: has-critical"; exit 1; }
+          [ "$CRITICAL_COUNT" = "1" ] || { echo "FAIL: critical-count"; exit 1; }
+          echo "PASS"

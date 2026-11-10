@@ -1,0 +1,41 @@
+name: Test critical package with fail-on-critical false
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start local audit API stub
+        run: |
+          rm -f /tmp/mock-requests.jsonl
+          nohup python3 "$GITHUB_WORKSPACE/tests/fixtures/mock_api.py" 8765 ok > /tmp/mock.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -s http://127.0.0.1:8765/ >/dev/null; then echo "stub up"; exit 0; fi
+            sleep 0.5
+          done
+          cat /tmp/mock.log
+          exit 1
+      - id: action
+        uses: .
+        with:
+          packages: 'crit-one,crit-two,high-new,warn-old,ok-pkg'
+          fail-on-critical: 'false'
+          api-url: http://127.0.0.1:8765
+          comment-on-pr: 'false'
+      - name: Assert outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "summary: $SUMMARY"
+          [ "$HAS_CRITICAL" = "true" ] || { echo "FAIL: has-critical"; exit 1; }
+          [ "$CRITICAL_COUNT" = "2" ] || { echo "FAIL: critical-count"; exit 1; }
+          echo "$SUMMARY" | grep -q '2 CRITICAL' || { echo "FAIL: headline"; exit 1; }
+          echo "$SUMMARY" | grep -q 'HIGH' || { echo "FAIL: HIGH row"; exit 1; }
+          echo "$SUMMARY" | grep -q 'NO_RECENT_RELEASE' || { echo "FAIL: warn row"; exit 1; }
+          echo "$SUMMARY" | grep -q '`ok-pkg`' || { echo "FAIL: ok-pkg missing"; exit 1; }
+          echo "PASS"
