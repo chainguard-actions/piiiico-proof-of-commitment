@@ -1,0 +1,12 @@
+{
+  "name": "fixture-npm",
+  "version": "1.0.0",
+  "dependencies": {
+    "prod-safe-one": "^1.0.0",
+    "prod-high-two": "^2.0.0",
+    "prod-safe-three": "^3.0.0"
+  },
+  "devDependencies": {
+    "dev-stale-tool": "^0.1.0"
+  }
+}

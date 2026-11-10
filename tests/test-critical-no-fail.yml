@@ -1,0 +1,40 @@
+name: Test critical package with fail-on-critical false
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          rm -f /tmp/mock-api-18083.log
+          setsid nohup python3 tests/fixtures/mock_api.py 18083 normal /tmp/mock-api-18083.log > /tmp/mock-server-18083.out 2>&1 &
+          for i in $(seq 1 40); do
+            curl -s http://127.0.0.1:18083/ >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:18083/ || { cat /tmp/mock-server-18083.out; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages: 'critical-lib,high-risk-lib,stale-lib,safe-alpha'
+          fail-on-critical: 'false'
+          api-url: http://127.0.0.1:18083
+      - name: Assert outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "summary: $SUMMARY"
+          if [ "$HAS_CRITICAL" != "true" ]; then echo "FAIL: has-critical should be true"; exit 1; fi
+          if [ "$CRITICAL_COUNT" != "1" ]; then echo "FAIL: critical-count should be 1"; exit 1; fi
+          echo "$SUMMARY" | grep -q 'CRITICAL\*\* package' || { echo "FAIL: missing critical headline"; exit 1; }
+          echo "$SUMMARY" | grep -q 'Critical: `critical-lib`' || { echo "FAIL: critical-lib not listed"; exit 1; }
+          echo "$SUMMARY" | grep '`high-risk-lib`' | grep -q 'HIGH' || { echo "FAIL: high-risk-lib not HIGH"; exit 1; }
+          echo "$SUMMARY" | grep '`stale-lib`' | grep -q 'STALE' || { echo "FAIL: stale-lib not STALE"; exit 1; }
+          echo "$SUMMARY" | grep '`critical-lib`' | grep -q '50M' || { echo "FAIL: downloads not formatted"; exit 1; }
+          echo "PASS"

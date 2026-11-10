@@ -1,0 +1,35 @@
+name: Test requirements.txt parsing
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          rm -f /tmp/mock-api-18086.log
+          setsid nohup python3 tests/fixtures/mock_api.py 18086 normal /tmp/mock-api-18086.log > /tmp/mock-server-18086.out 2>&1 &
+          for i in $(seq 1 40); do
+            curl -s http://127.0.0.1:18086/ >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:18086/ || { cat /tmp/mock-server-18086.out; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/pypi/requirements.txt
+          ecosystem: pypi
+          api-url: http://127.0.0.1:18086
+      - name: Assert parsed packages
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "summary: $SUMMARY"
+          cat /tmp/mock-api-18086.log
+          grep -q '"packages": \["requests", "flask", "pydantic"\]' /tmp/mock-api-18086.log || { echo "FAIL: unexpected payload"; exit 1; }
+          if [ "$HAS_CRITICAL" != "false" ]; then echo "FAIL: has-critical should be false"; exit 1; fi
+          echo "$SUMMARY" | grep -q '`pydantic`' || { echo "FAIL: pydantic missing"; exit 1; }
+          echo "PASS"

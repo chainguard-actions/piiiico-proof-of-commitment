@@ -1,0 +1,44 @@
+name: Test basic manual package list
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          rm -f /tmp/mock-api-18081.log
+          setsid nohup python3 tests/fixtures/mock_api.py 18081 normal /tmp/mock-api-18081.log > /tmp/mock-server-18081.out 2>&1 &
+          for i in $(seq 1 40); do
+            curl -s http://127.0.0.1:18081/ >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:18081/ || { cat /tmp/mock-server-18081.out; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages: 'safe-alpha, safe-beta'
+          api-url: http://127.0.0.1:18081
+      - name: Assert outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "summary: $SUMMARY"
+          if [ "$HAS_CRITICAL" != "false" ]; then echo "FAIL: has-critical should be false"; exit 1; fi
+          if [ "$CRITICAL_COUNT" != "0" ]; then echo "FAIL: critical-count should be 0"; exit 1; fi
+          echo "$SUMMARY" | grep -q '`safe-alpha`' || { echo "FAIL: safe-alpha missing"; exit 1; }
+          echo "$SUMMARY" | grep -q '`safe-beta`' || { echo "FAIL: safe-beta missing"; exit 1; }
+          echo "$SUMMARY" | grep -q 'All packages pass' || { echo "FAIL: missing pass headline"; exit 1; }
+          echo "$SUMMARY" | grep -q 'commit-supply-chain-audit' || { echo "FAIL: missing marker"; exit 1; }
+          echo "PASS"
+      - name: Assert request sent to API
+        run: |
+          cat /tmp/mock-api-18081.log
+          grep -q '"packages": \["safe-alpha", "safe-beta"\]' /tmp/mock-api-18081.log || { echo "FAIL: unexpected batch payload"; exit 1; }
+          if grep -q '"auth": "Bearer' /tmp/mock-api-18081.log; then echo "FAIL: no auth header expected"; exit 1; fi
+          echo "PASS"

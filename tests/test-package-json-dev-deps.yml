@@ -1,0 +1,42 @@
+name: Test package.json detection with dev deps and max-packages
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          rm -f /tmp/mock-api-18084.log
+          setsid nohup python3 tests/fixtures/mock_api.py 18084 normal /tmp/mock-api-18084.log > /tmp/mock-server-18084.out 2>&1 &
+          for i in $(seq 1 40); do
+            curl -s http://127.0.0.1:18084/ >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:18084/ || { cat /tmp/mock-server-18084.out; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/npm/package.json
+          include-dev-dependencies: 'true'
+          max-packages: '10'
+          api-url: http://127.0.0.1:18084
+      - name: Assert outputs
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "summary: $SUMMARY"
+          if [ "$HAS_CRITICAL" != "false" ]; then echo "FAIL: has-critical should be false"; exit 1; fi
+          for p in prod-safe-one prod-high-two prod-safe-three dev-stale-tool; do
+            echo "$SUMMARY" | grep -q "\`$p\`" || { echo "FAIL: $p missing"; exit 1; }
+          done
+          echo "$SUMMARY" | grep -q 'HIGH risk' || { echo "FAIL: missing HIGH headline"; exit 1; }
+          echo "PASS"
+      - name: Assert payload
+        run: |
+          cat /tmp/mock-api-18084.log
+          grep -q '"packages": \["prod-safe-one", "prod-high-two", "prod-safe-three", "dev-stale-tool"\]' /tmp/mock-api-18084.log || { echo "FAIL: unexpected payload"; exit 1; }
+          echo "PASS"

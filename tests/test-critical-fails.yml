@@ -1,0 +1,35 @@
+name: Test critical package fails workflow
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          rm -f /tmp/mock-api-18082.log
+          setsid nohup python3 tests/fixtures/mock_api.py 18082 normal /tmp/mock-api-18082.log > /tmp/mock-server-18082.out 2>&1 &
+          for i in $(seq 1 40); do
+            curl -s http://127.0.0.1:18082/ >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:18082/ || { cat /tmp/mock-server-18082.out; exit 1; }
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          packages: 'critical-lib,safe-alpha'
+          fail-on-critical: 'true'
+          api-url: http://127.0.0.1:18082
+      - name: Assert action failed due to critical package
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          if [ "$OUTCOME" != "failure" ]; then
+            echo "FAIL: expected failure when CRITICAL package found and fail-on-critical=true"
+            exit 1
+          fi
+          grep -q 'critical-lib' /tmp/mock-api-18082.log || { echo "FAIL: API not called"; exit 1; }
+          echo "PASS"

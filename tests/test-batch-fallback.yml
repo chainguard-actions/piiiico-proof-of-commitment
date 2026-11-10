@@ -1,0 +1,39 @@
+name: Test per-package fallback when batch returns 403
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API (batch403 mode)
+        run: |
+          rm -f /tmp/mock-api-18087.log
+          setsid nohup python3 tests/fixtures/mock_api.py 18087 batch403 /tmp/mock-api-18087.log > /tmp/mock-server-18087.out 2>&1 &
+          for i in $(seq 1 40); do
+            curl -s http://127.0.0.1:18087/ >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:18087/ || { cat /tmp/mock-server-18087.out; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages: 'safe-alpha,stale-lib'
+          api-url: http://127.0.0.1:18087
+      - name: Assert fallback produced results
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "summary: $SUMMARY"
+          cat /tmp/mock-api-18087.log
+          COUNT=$(wc -l < /tmp/mock-api-18087.log)
+          if [ "$COUNT" -ne 3 ]; then echo "FAIL: expected 1 batch + 2 single requests, got $COUNT"; exit 1; fi
+          grep -q '"packages": \["safe-alpha"\]' /tmp/mock-api-18087.log || { echo "FAIL: no single request for safe-alpha"; exit 1; }
+          grep -q '"packages": \["stale-lib"\]' /tmp/mock-api-18087.log || { echo "FAIL: no single request for stale-lib"; exit 1; }
+          if [ "$HAS_CRITICAL" != "false" ]; then echo "FAIL: has-critical should be false"; exit 1; fi
+          echo "$SUMMARY" | grep -q '`safe-alpha`' || { echo "FAIL: safe-alpha missing"; exit 1; }
+          echo "$SUMMARY" | grep '`stale-lib`' | grep -q 'STALE' || { echo "FAIL: stale-lib missing"; exit 1; }
+          echo "$SUMMARY" | grep -q 'warning(s)' || { echo "FAIL: missing warning headline"; exit 1; }
+          echo "PASS"

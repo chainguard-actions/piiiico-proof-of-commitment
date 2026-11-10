@@ -1,0 +1,32 @@
+name: Test api-key sends Authorization header
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          rm -f /tmp/mock-api-18089.log
+          setsid nohup python3 tests/fixtures/mock_api.py 18089 normal /tmp/mock-api-18089.log > /tmp/mock-server-18089.out 2>&1 &
+          for i in $(seq 1 40); do
+            curl -s http://127.0.0.1:18089/ >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:18089/ || { cat /tmp/mock-server-18089.out; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages: 'safe-alpha,safe-beta'
+          api-key: test-pro-key-123
+          api-url: http://127.0.0.1:18089
+      - name: Assert auth header and outputs
+        env:
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+        run: |
+          echo "critical-count: $CRITICAL_COUNT"
+          cat /tmp/mock-api-18089.log
+          grep -q '"auth": "Bearer test-pro-key-123"' /tmp/mock-api-18089.log || { echo "FAIL: Authorization header missing"; exit 1; }
+          if [ "$CRITICAL_COUNT" != "0" ]; then echo "FAIL: critical-count should be 0"; exit 1; fi
+          echo "PASS"

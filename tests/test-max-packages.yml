@@ -1,0 +1,33 @@
+name: Test max-packages limit with prod-only package.json
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock Commit API
+        run: |
+          rm -f /tmp/mock-api-18085.log
+          setsid nohup python3 tests/fixtures/mock_api.py 18085 normal /tmp/mock-api-18085.log > /tmp/mock-server-18085.out 2>&1 &
+          for i in $(seq 1 40); do
+            curl -s http://127.0.0.1:18085/ >/dev/null 2>&1 && break
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:18085/ || { cat /tmp/mock-server-18085.out; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/npm/package.json
+          max-packages: '2'
+          api-url: http://127.0.0.1:18085
+      - name: Assert only first 2 prod deps audited
+        env:
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "summary: $SUMMARY"
+          cat /tmp/mock-api-18085.log
+          grep -q '"packages": \["prod-safe-one", "prod-high-two"\]' /tmp/mock-api-18085.log || { echo "FAIL: unexpected payload"; exit 1; }
+          if echo "$SUMMARY" | grep -q 'dev-stale-tool'; then echo "FAIL: dev dep should be excluded"; exit 1; fi
+          if echo "$SUMMARY" | grep -q 'prod-safe-three'; then echo "FAIL: max-packages not honored"; exit 1; fi
+          echo "PASS"

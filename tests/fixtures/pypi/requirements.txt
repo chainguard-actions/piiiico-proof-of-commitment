@@ -1,0 +1,5 @@
+# Fixture requirements
+requests>=2.31.0
+flask==3.0.0
+-r other.txt
+pydantic[email]~=2.5
