@@ -1,0 +1,41 @@
+name: Test auto-detect from package.json with devDependencies
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock audit API
+        run: |
+          rm -f /tmp/mock-api-requests.log
+          setsid nohup python3 "$GITHUB_WORKSPACE/tests/fixtures/mock_api.py" 8765 > /tmp/mock-api.out 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:8765/ >/dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:8765/ || { cat /tmp/mock-api.out; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/package.json
+          include-dev-dependencies: 'true'
+          api-url: http://127.0.0.1:8765
+          comment-on-pr: 'false'
+      - name: Assert outputs and request
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "summary: $SUMMARY"
+          cat /tmp/mock-api-requests.log
+          [ "$HAS_CRITICAL" = "false" ] || { echo "FAIL: has-critical should be false"; exit 1; }
+          echo "$SUMMARY" | grep -q '`devpkg-c`' || { echo "FAIL: dev dependency missing from summary"; exit 1; }
+          echo "$SUMMARY" | grep -q 'warning' || { echo "FAIL: expected warning headline"; exit 1; }
+          python3 - <<'EOF'
+          import json
+          lines = [json.loads(l) for l in open('/tmp/mock-api-requests.log') if l.strip()]
+          posts = [l for l in lines if l['path'].endswith('/api/audit')]
+          assert len(posts) == 1, posts
+          assert posts[0]['packages'] == ['okpkg-a', 'stalepkg-b', 'devpkg-c'], posts[0]
+          print('PASS: packages parsed from package.json incl. dev deps')
+          EOF
+          echo "PASS"

@@ -1,0 +1,11 @@
+{
+  "name": "fixture-app",
+  "version": "1.0.0",
+  "dependencies": {
+    "okpkg-a": "^1.0.0",
+    "stalepkg-b": "^2.0.0"
+  },
+  "devDependencies": {
+    "devpkg-c": "^3.0.0"
+  }
+}

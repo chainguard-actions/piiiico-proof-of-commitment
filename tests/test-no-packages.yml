@@ -1,0 +1,28 @@
+name: Test unsupported packages-file exits cleanly with nothing to audit
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/Gemfile.lock
+          api-url: http://127.0.0.1:1
+          comment-on-pr: 'false'
+      - name: Assert no outputs set and success
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "has-critical: '$HAS_CRITICAL' critical-count: '$CRITICAL_COUNT'"
+          [ "$OUTCOME" = "success" ] || { echo "FAIL: expected success"; exit 1; }
+          [ -z "$HAS_CRITICAL" ] || { echo "FAIL: has-critical should be unset"; exit 1; }
+          [ -z "$CRITICAL_COUNT" ] || { echo "FAIL: critical-count should be unset"; exit 1; }
+          [ -z "$SUMMARY" ] || { echo "FAIL: audit-summary should be unset"; exit 1; }
+          echo "PASS"

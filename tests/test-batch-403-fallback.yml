@@ -1,0 +1,48 @@
+name: Test per-package fallback on 403 batch limit
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock audit API
+        run: |
+          rm -f /tmp/mock-api-requests.log
+          setsid nohup python3 "$GITHUB_WORKSPACE/tests/fixtures/mock_api.py" 8765 > /tmp/mock-api.out 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:8765/ >/dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:8765/ || { cat /tmp/mock-api.out; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages: 'okpkg-x,critpkg-y,stalepkg-z'
+          fail-on-critical: 'false'
+          api-url: http://127.0.0.1:8765/batch403
+          comment-on-pr: 'false'
+      - name: Assert fallback worked
+        env:
+          HAS_CRITICAL: ${{ steps.action.outputs.has-critical }}
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "has-critical: $HAS_CRITICAL"
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "summary: $SUMMARY"
+          cat /tmp/mock-api-requests.log
+          [ "$HAS_CRITICAL" = "true" ] || { echo "FAIL: has-critical should be true"; exit 1; }
+          [ "$CRITICAL_COUNT" = "1" ] || { echo "FAIL: critical-count should be 1"; exit 1; }
+          for p in okpkg-x critpkg-y stalepkg-z; do
+            echo "$SUMMARY" | grep -q "\`$p\`" || { echo "FAIL: summary missing $p"; exit 1; }
+          done
+          python3 - <<'EOF'
+          import json
+          lines = [json.loads(l) for l in open('/tmp/mock-api-requests.log') if l.strip()]
+          posts = [l for l in lines if l['path'].endswith('/api/audit')]
+          # 1 batch request (403) + 3 single-package requests
+          assert len(posts) == 4, posts
+          assert len(posts[0]['packages']) == 3, posts[0]
+          singles = [p['packages'] for p in posts[1:]]
+          assert singles == [['okpkg-x'], ['critpkg-y'], ['stalepkg-z']], singles
+          print('PASS: fell back to per-package requests')
+          EOF
+          echo "PASS"

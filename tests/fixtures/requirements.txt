@@ -1,0 +1,6 @@
+# fixture requirements
+requests>=2.31.0
+highpkg-flask==3.0.0
+-r other.txt
+numpy[extra]~=1.26
+pandas

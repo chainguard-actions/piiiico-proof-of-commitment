@@ -1,0 +1,42 @@
+name: Test auto-detect from requirements.txt with max-packages
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Start mock audit API
+        run: |
+          rm -f /tmp/mock-api-requests.log
+          setsid nohup python3 "$GITHUB_WORKSPACE/tests/fixtures/mock_api.py" 8765 > /tmp/mock-api.out 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:8765/ >/dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:8765/ || { cat /tmp/mock-api.out; exit 1; }
+      - id: action
+        uses: .
+        with:
+          packages-file: tests/fixtures/requirements.txt
+          max-packages: '3'
+          api-url: http://127.0.0.1:8765
+          comment-on-pr: 'false'
+      - name: Assert request and outputs
+        env:
+          CRITICAL_COUNT: ${{ steps.action.outputs.critical-count }}
+          SUMMARY: ${{ steps.action.outputs.audit-summary }}
+        run: |
+          echo "critical-count: $CRITICAL_COUNT"
+          echo "summary: $SUMMARY"
+          cat /tmp/mock-api-requests.log
+          [ "$CRITICAL_COUNT" = "0" ] || { echo "FAIL: critical-count should be 0"; exit 1; }
+          if echo "$SUMMARY" | grep -q '`pandas`'; then
+            echo "FAIL: pandas should be excluded by max-packages=3"; exit 1
+          fi
+          python3 - <<'EOF'
+          import json
+          lines = [json.loads(l) for l in open('/tmp/mock-api-requests.log') if l.strip()]
+          posts = [l for l in lines if l['path'].endswith('/api/audit')]
+          assert len(posts) == 1, posts
+          assert posts[0]['packages'] == ['requests', 'highpkg-flask', 'numpy'], posts[0]
+          print('PASS: requirements parsed and truncated')
+          EOF
+          echo "PASS"
